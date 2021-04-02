@@ -1,5 +1,7 @@
 const baseurl="https://googledrive-client.herokuapp.com";
 
+const fs=require('fs')
+
 const express=require('express');
 const app=express();
 app.use(express.json());
@@ -376,21 +378,32 @@ app.get("/getfile",authenticate,async(req,res)=>{
         }
 
 })
-app.get("/file:filename",authenticate,async(req,res)=>{
+app.get("/file/:file",authenticate,async(req,res)=>{
 
     const client = await mongoClient.connect(dbUrl);
     if(client){
         try {
             const db = client.db("drive");
-            const document = await db.collection("documents").findOne({email:req.body.email,filename:filename}).project({awskeyname:1,_id:0})
+            const document = await db.collection("documents").findOne({email:req.body.email,filename:req.params.file})
             const{awskeyname}=document;
             if(document){
                 try {
+
+                    const streamToString = (stream) =>
+                    new Promise((resolve, reject) => {
+                      const chunks = [];
+                      stream.on("data", (chunk) => chunks.push(chunk));
+                      stream.on("error", reject);
+                      stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+                    });
                     const getobjectParams = { Bucket: 
                         "sampleupload", Key:awskeyname}
                     const data = await s3.send(new GetObjectCommand(getobjectParams));
+                   // data.Body.pipe(fs.createWriteStream(req.params.file))
+                   res.writeHead(200, {'Content-disposition': 'attachment; filename='+req.params.file});
+                   data.Body.pipe(res);
                     const bodycontents=await streamToString(data.Body);
-                    res.status(200).json({message:"file loaded",bodycontents})
+                   // res.status(200).json({message:"file loaded",bodycontents})
                   } catch (err) {
                     console.log("Error", err);
                   } 
