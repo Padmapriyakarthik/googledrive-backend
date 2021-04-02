@@ -400,8 +400,9 @@ app.get("/file/:file",authenticate,async(req,res)=>{
                         "sampleupload", Key:awskeyname}
                     const data = await s3.send(new GetObjectCommand(getobjectParams));
                    // data.Body.pipe(fs.createWriteStream(req.params.file))
-                   res.writeHead(200, {'Content-disposition': 'attachment; filename='+req.params.file});
-                   data.Body.pipe(res);
+                  // res.writeHead(200, {'Content-disposition': 'attachment; filename='+req.params.file});
+                  res.attachment(req.params.file); 
+                  data.Body.pipe(res);
                     const bodycontents=await streamToString(data.Body);
                    // res.status(200).json({message:"file loaded",bodycontents})
                   } catch (err) {
