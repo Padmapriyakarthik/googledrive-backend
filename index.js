@@ -314,6 +314,7 @@ app.post('/upload', upload.single('somefile'),authenticate, async (req, res) => 
                 const {shorturl}=req.body;
                
                // console.log(url);
+
                 const db = client.db("drive");
                 const document = await db.collection("documents").insertOne({email:req.body.email,awskeyname:key,filename:req.file.originalname});
                 console.log(document);
@@ -377,8 +378,42 @@ app.get("/getfile",authenticate,async(req,res)=>{
 })
 app.get("/file:filename",authenticate,async(req,res)=>{
 
+    const client = await mongoClient.connect(dbUrl);
+    if(client){
+        try {
+            const db = client.db("drive");
+            const document = await db.collection("documents").findOne({email:req.body.email,filename:filename}).project({awskeyname:1,_id:0})
+            const{awskeyname}=document;
+            if(document){
+                try {
+                    const getobjectParams = { Bucket: 
+                        "sampleupload", Key:awskeyname}
+                    const data = await s3.send(new GetObjectCommand(getobjectParams));
+                    const bodycontents=await streamToString(data.Body);
+                    res.status(200).json({message:"file loaded",bodycontents})
+                  } catch (err) {
+                    console.log("Error", err);
+                  } 
+            }
+            else
+            {
+                res.status(200).json({message:"no files to load"});
+            }
+            client.close();
+        } catch (error) {
+            console.log(error);
+            client.close();
+        }
+    }
+    else{
+        res.sendStatus(500);
+    }
+
+
 
 })
+
+
 app.listen(port,()=>{console.log("App Started",port)})
 
 async function authenticate(req,res,next){
@@ -402,26 +437,3 @@ async function authenticate(req,res,next){
         }
 }
 
-const run = async (key,body) => {
-
-    const objectParams = { Bucket: bucketName, Key:key, Body:body};
-    try {
-      const results = await s3.send(new PutObjectCommand(objectParams));
-      console.log("Successfully uploaded data to " + bucketName + "/" + key);
-      const {httpStatusCode}=results.$metadata;
-
-      console.log(httpStatusCode);
-    } catch (err) {
-      console.log("Error", err);
-    }
-  };    
-
-
-  const run1 = async () => {
-    try {
-      const data = await s3.send(new ListBucketsCommand({}));
-      console.log("Success", data.Buckets);
-    } catch (err) {
-      console.log("Error", err);
-    }
-  };
