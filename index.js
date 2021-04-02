@@ -31,6 +31,26 @@ const transporter=nodemailer.createTransport({
 const dbUrl=process.env.DB_URL || "mongodb://127.0.0.1:27017";
 const port=process.env.PORT || 4000;
 
+let multer  = require('multer');
+let upload  = multer({ storage: multer.memoryStorage() });
+// Import required AWS SDK clients and commands for Node.js
+const {
+    S3Client,
+    PutObjectCommand,
+    CreateBucketCommand,
+    ListBucketsCommand,
+    ListObjectsCommand,
+    GetObjectCommand
+  } = require("@aws-sdk/client-s3");
+  
+  // Set the AWS region
+  const REGION ="us-east-2";
+  const s3 = new S3Client({ region: REGION,httpOptions: { timeout: 300000 } });
+  // Set the bucket parameters
+  const bucketName = "sampleupload";
+  const bucketParams = { Bucket: bucketName };
+  
+
 // register user
 app.post("/register", async (req,res)=>{
     
@@ -273,6 +293,92 @@ app.post('/updatepassword',async(req,res)=>{
     }
 
 })
+
+app.post('/upload', upload.single('somefile'),authenticate, async (req, res) => {
+   // console.log(req.file.originalname);
+    //console.log(req.file.buffer.toString('utf8'));
+    req.body.filename=req.file.originalname;  
+   key=req.body.email+"_"+req.file.originalname;
+   body=req.file.buffer.toString('utf8')
+    console.log(req.body);
+    const objectParams = { Bucket: bucketName, Key:key, Body:body};
+    try {
+      const results = await s3.send(new PutObjectCommand(objectParams));
+      console.log("Successfully uploaded data to " + bucketName + "/" + key);
+      const {httpStatusCode}=results.$metadata;
+    if(httpStatusCode==200)
+    {   
+        const client = await mongoClient.connect(dbUrl);
+        if(client){
+            try {
+                const {shorturl}=req.body;
+               
+               // console.log(url);
+                const db = client.db("drive");
+                const document = await db.collection("documents").insertOne({email:req.body.email,awskeyname:key,filename:req.file.originalname});
+                console.log(document);
+                if(document){
+                    
+                    res.status(200).json({
+                        "message":"record updated"
+                    })
+                }
+                else
+                {
+                    res.status(200).json({"message":"Upload failed check your file"});
+                }
+                client.close();
+            } catch (error) {
+                console.log(error);
+                client.close();
+            }
+        }
+        else{
+            res.sendStatus(500);
+        }
+
+    }else{
+        res.status(200).json({message:"Upload failed"});
+    }
+      console.log(httpStatusCode);
+    } catch (err) {
+      console.log("Error", err);
+    }
+
+});
+
+app.get("/getfile",authenticate,async(req,res)=>{
+
+    const client = await mongoClient.connect(dbUrl);
+        if(client){
+            try {
+
+                const db = client.db("drive");
+                const document = await db.collection("documents").find({email:req.body.email}).project({filename:1,_id:0}).toArray();
+            
+                if(document){
+                    
+                    res.status(200).json({message:"file listed",document})
+                }
+                else
+                {
+                    res.status(200).json({message:"no files to list"});
+                }
+                client.close();
+            } catch (error) {
+                console.log(error);
+                client.close();
+            }
+        }
+        else{
+            res.sendStatus(500);
+        }
+
+})
+app.get("/file:filename",authenticate,async(req,res)=>{
+
+
+})
 app.listen(port,()=>{console.log("App Started",port)})
 
 async function authenticate(req,res,next){
@@ -295,3 +401,27 @@ async function authenticate(req,res,next){
             res.status(401).json({message:"No token"})
         }
 }
+
+const run = async (key,body) => {
+
+    const objectParams = { Bucket: bucketName, Key:key, Body:body};
+    try {
+      const results = await s3.send(new PutObjectCommand(objectParams));
+      console.log("Successfully uploaded data to " + bucketName + "/" + key);
+      const {httpStatusCode}=results.$metadata;
+
+      console.log(httpStatusCode);
+    } catch (err) {
+      console.log("Error", err);
+    }
+  };    
+
+
+  const run1 = async () => {
+    try {
+      const data = await s3.send(new ListBucketsCommand({}));
+      console.log("Success", data.Buckets);
+    } catch (err) {
+      console.log("Error", err);
+    }
+  };
